@@ -27,16 +27,23 @@
 <body>
 <div class="app-container">
     <div class="glass-card punch-center">
-        <h2 style="margin:0;">Welcome, <span id="agentNameDisplay">Agent</span></h2>
-        <div id="geoStatus" class="status-badge out-range">Initializing GPS...</div>
-        <br>
-        <button id="punchBtn" class="biometric-btn" disabled onclick="handlePunch()">
-            <i id="punchIcon" class="fas fa-fingerprint"></i>
-        </button>
-        <div id="punchLabel" style="font-weight:800; color:#64748b;">OUTSIDE RANGE</div>
-        <div id="timeDisplay" style="font-size: 28px; font-weight: 800; margin-top:15px;">00:00:00</div>
-    </div>
-    <div class="glass-card">
+    <h2 style="margin:0;">Alpha Profin Login</h2>
+    <select id="agentSelect" style="margin-top:20px; padding:10px; border-radius:10px; width:80%; border:1px solid #cbd5e1;">
+        <option value="">Select Your Name</option>
+        <option>Agent 1</option><option>Agent 2</option><option>Agent 3</option>
+        <option>Agent 4</option><option>Agent 5</option><option>Agent 6</option>
+        <option>Agent 7</option><option>Agent 8</option><option>Agent 9</option>
+        <option>Admin</option>
+    </select>
+
+    <div id="geoStatus" class="status-badge out-range" style="margin-top:15px;">Initializing GPS...</div>
+    <br>
+    <button id="punchBtn" class="biometric-btn" disabled onclick="handlePunch()">
+        <i id="punchIcon" class="fas fa-fingerprint"></i>
+    </button>
+    <div id="punchLabel" style="font-weight:800; color:#64748b;">SELECT NAME & BE IN RANGE</div>
+</div>  
+        <div class="glass-card">
         <h3 style="margin-top:0;"><i class="fas fa-calendar-alt"></i> 2026 Holidays</h3>
         <ul class="holiday-list" id="holidayList"></ul>
     </div>
@@ -81,6 +88,36 @@
         const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
         return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
     }
+    async function executeSync() {
+    const agentName = document.getElementById('agentSelect').value;
+    if(!agentName) { alert("Please select your name first!"); return; }
+
+    const btn = document.getElementById('punchBtn');
+    const type = isOnDuty ? "PUNCH-OUT" : "PUNCH-IN";
+    
+    const payload = {
+        agentId: agentName, // Captures the selected name
+        lat: userCoords.lat,
+        lon: userCoords.lon,
+        type: type
+    };
+
+    try {
+        // FIXED: Using text/plain to bypass CORS block
+        await fetch(CLOUD_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+
+        isOnDuty = !isOnDuty;
+        localStorage.setItem('onDuty', isOnDuty);
+        updateUIState();
+        alert(`✓ ${agentName} Successfully ${type}`);
+    } catch (error) {
+        alert("Sync Error. Check Internet.");
+    }
+}
 
     async function handlePunch() {
         // Trigger Biometric
@@ -105,4 +142,5 @@
 </script>
 </body>
 </html>
+
 
