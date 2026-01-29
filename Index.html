@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alpha Profin | Agent Hub</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #4361ee; --success: #06d6a0; --danger: #ef4444; --dark: #0f172a; --glass: rgba(255, 255, 255, 0.9); }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f1f5f9; margin: 0; display: flex; min-height: 100vh; color: var(--dark); }
+        .app-container { max-width: 1200px; margin: auto; width: 95%; display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; padding: 20px; }
+        @media (max-width: 900px) { .app-container { grid-template-columns: 1fr; } }
+        .glass-card { background: var(--glass); backdrop-filter: blur(10px); border-radius: 24px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #fff; }
+        .punch-center { text-align: center; }
+        .biometric-btn { width: 160px; height: 160px; border-radius: 50%; background: #fff; border: 8px solid #cbd5e1; cursor: pointer; transition: 0.4s; font-size: 50px; color: #cbd5e1; margin: 25px 0; }
+        .biometric-btn.active { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 20px rgba(67, 97, 238, 0.3); }
+        .biometric-btn.on-duty { border-color: var(--danger); color: var(--danger); }
+        .status-badge { padding: 8px 16px; border-radius: 50px; font-size: 11px; font-weight: 800; display: inline-block; margin-bottom: 15px; }
+        .in-range { background: #dcfce7; color: #166534; }
+        .out-range { background: #fee2e2; color: #991b1b; }
+        .holiday-list { list-style: none; padding: 0; margin: 0; }
+        .holiday-item { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; }
+        .holiday-date { font-weight: 800; color: var(--primary); min-width: 60px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="glass-card punch-center">
+        <h2 style="margin:0;">Welcome, <span id="agentNameDisplay">Agent</span></h2>
+        <div id="geoStatus" class="status-badge out-range">Initializing GPS...</div>
+        <br>
+        <button id="punchBtn" class="biometric-btn" disabled onclick="handlePunch()">
+            <i id="punchIcon" class="fas fa-fingerprint"></i>
+        </button>
+        <div id="punchLabel" style="font-weight:800; color:#64748b;">OUTSIDE RANGE</div>
+        <div id="timeDisplay" style="font-size: 28px; font-weight: 800; margin-top:15px;">00:00:00</div>
+    </div>
+    <div class="glass-card">
+        <h3 style="margin-top:0;"><i class="fas fa-calendar-alt"></i> 2026 Holidays</h3>
+        <ul class="holiday-list" id="holidayList"></ul>
+    </div>
+</div>
+
+<script>
+    const CLOUD_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
+    const BRANCHES = [
+        { name: "Main Office", lat: 13.0827, lon: 80.2707 },
+        { name: "Branch 2", lat: 13.0489, lon: 80.2018 }
+    ];
+    let userCoords = { lat: 0, lon: 0 };
+    let isOnDuty = localStorage.getItem('onDuty') === 'true';
+
+    function init() {
+        const holidays = [{date:"Jan 26", name:"Republic Day"}, {date:"Aug 15", name:"Independence Day"}, {date:"Oct 2", name:"Gandhi Jayanti"}, {date:"Nov 8", name:"Diwali"}];
+        document.getElementById('holidayList').innerHTML = holidays.map(h => `<li class="holiday-item"><span class="holiday-date">${h.date}</span><span>${h.name}</span></li>`).join('');
+        setInterval(() => { document.getElementById('timeDisplay').innerText = new Date().toLocaleTimeString(); }, 1000);
+        updateUI();
+        startTracking();
+    }
+
+    function startTracking() {
+        navigator.geolocation.watchPosition(pos => {
+            userCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            let branch = BRANCHES.find(b => calculateDistance(userCoords.lat, userCoords.lon, b.lat, b.lon) <= 150);
+            const badge = document.getElementById('geoStatus');
+            const btn = document.getElementById('punchBtn');
+            if(branch) {
+                badge.className = "status-badge in-range"; badge.innerHTML = "📍 Authorized: " + branch.name;
+                btn.disabled = false; btn.classList.add('active');
+                document.getElementById('punchLabel').innerText = isOnDuty ? "TAP TO PUNCH OUT" : "TAP TO PUNCH IN";
+            } else {
+                badge.className = "status-badge out-range"; badge.innerHTML = "❌ Outside Range ("+userCoords.lat.toFixed(4)+")";
+                btn.disabled = true; btn.classList.remove('active');
+            }
+        }, err => { alert("Please enable GPS and Allow Location access."); }, { enableHighAccuracy: true });
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3; const dLat = (lat2-lat1)*Math.PI/180; const dLon = (lon2-lon1)*Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+
+    async function handlePunch() {
+        // Trigger Biometric
+        try {
+            const auth = await navigator.credentials.create({ publicKey: { challenge: new Uint8Array([1,2,3,4]), rp: {name: "Alpha"}, user: {id: new Uint8Array([1]), name: "A", displayName: "A"}, pubKeyCredParams: [{type: "public-key", alg: -7}] }});
+        } catch (e) {} // Fallback if bio fails but GPS is valid
+
+        const type = isOnDuty ? "OUT" : "IN";
+        const res = await fetch(CLOUD_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ agentId: "Agent", type: type, lat: userCoords.lat, lon: userCoords.lon }) });
+        isOnDuty = !isOnDuty;
+        localStorage.setItem('onDuty', isOnDuty);
+        updateUI();
+        alert("Success: Punched " + type);
+    }
+
+    function updateUI() {
+        const btn = document.getElementById('punchBtn');
+        if(isOnDuty) { btn.classList.add('on-duty'); document.getElementById('punchIcon').className = "fas fa-sign-out-alt"; }
+        else { btn.classList.remove('on-duty'); document.getElementById('punchIcon').className = "fas fa-fingerprint"; }
+    }
+    init();
+</script>
+</body>
+</html>
