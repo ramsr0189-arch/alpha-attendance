@@ -18,6 +18,7 @@
             --success: #10b981;
             --error: #ef4444;
             --text: #f8fafc;
+            --warning: #f59e0b;
         }
 
         body {
@@ -174,7 +175,7 @@
                 <i class="fas fa-shield-halved" style="font-size:40px; color:var(--primary);"></i>
             </div>
             <h2>Device Registration</h2>
-            <p>Link this device to your Agent Profile. You only need to do this once per device.</p>
+            <p>Link this device to your Agent Profile. This will permanently bind this device to your ID.</p>
 
             <div style="margin-top:30px;">
                 <div class="input-group">
@@ -186,8 +187,27 @@
                     <input type="password" id="regPass" class="form-control" placeholder="••••••••">
                 </div>
                 <button onclick="registerDevice()" class="btn-action btn-primary">
-                    <i class="fas fa-link"></i> Bind Device & Enable Biometrics
+                    <i class="fas fa-link"></i> Bind Device Permanently
                 </button>
+            </div>
+        </div>
+
+        <!-- VIEW 1.5: DEVICE LOCKED (RE-AUTH) -->
+        <div id="lockedView" class="secure-card hidden">
+            <div style="margin-bottom:20px;">
+                <i class="fas fa-user-lock" style="font-size:40px; color:var(--warning);"></i>
+            </div>
+            <h2>Device Locked</h2>
+            <p>This device is bound to <b id="boundUserDisplay" style="color:white">Agent</b>.</p>
+            <p style="font-size:12px;">Only this agent can access this terminal.</p>
+
+            <div style="margin-top:30px;">
+                <button onclick="unlockDevice()" class="btn-action btn-primary">
+                    <i class="fas fa-fingerprint"></i> Verify to Unlock
+                </button>
+            </div>
+            <div style="margin-top:20px; font-size:11px; color:#64748b;">
+                ID Mismatch? Contact IT Admin to reset device binding.
             </div>
         </div>
 
@@ -258,6 +278,8 @@
         // --- STATE ---
         let userProfile = null; // { id, name, role }
         let savedCredentialId = null;
+        let boundAgentId = null;
+
         let currentGeo = { lat: 0, lon: 0, locationName: "Unknown", isBranch: false };
         let attendanceState = {
             status: "OUT", // 'IN' or 'OUT'
@@ -275,15 +297,30 @@
         document.addEventListener("DOMContentLoaded", () => {
             const storedUser = localStorage.getItem('agent_profile');
             const storedCredId = localStorage.getItem('device_cred_id');
+            const storedBoundId = localStorage.getItem('bound_agent_id');
             const storedState = localStorage.getItem('attendance_state');
 
             if (storedState) attendanceState = JSON.parse(storedState);
 
-            if (storedUser && storedCredId) {
-                userProfile = JSON.parse(storedUser);
+            if (storedBoundId && storedCredId) {
+                // DEVICE IS ALREADY BOUND
+                boundAgentId = storedBoundId;
                 savedCredentialId = storedCredId;
-                showPunchView();
+
+                if (storedUser) {
+                    // ... AND USER IS LOGGED IN
+                    userProfile = JSON.parse(storedUser);
+                    if (userProfile.id !== boundAgentId) {
+                        forceLogout(); // Security Mismatch Check
+                        return;
+                    }
+                    showPunchView();
+                } else {
+                    // ... BUT USER LOGGED OUT -> SHOW LOCK SCREEN
+                    showLockedView();
+                }
             } else {
+                // NEW DEVICE
                 showSetupView();
             }
         });
@@ -383,19 +420,51 @@
                 const credential = await navigator.credentials.create({ publicKey });
                 const credId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
 
+                // LOCK THE DEVICE
                 localStorage.setItem('agent_profile', JSON.stringify(user));
                 localStorage.setItem('device_cred_id', credId);
+                localStorage.setItem('bound_agent_id', user.id);
 
                 userProfile = user;
                 savedCredentialId = credId;
+                boundAgentId = user.id;
 
                 Swal.fire({
-                    icon: 'success', title: 'Device Linked!', text: 'Secure Enclave Bound.', background: '#1e293b', color: 'white'
+                    icon: 'success', title: 'Device Locked!', text: `This device is now permanently bound to ${user.id}`, background: '#1e293b', color: 'white'
                 }).then(showPunchView);
 
             } catch (err) {
                 console.error(err);
                 Swal.fire({ icon: 'error', title: 'Setup Cancelled', text: 'Biometric setup failed.', background: '#1e293b', color: 'white' });
+            }
+        }
+
+        // --- FLOW 1.5: UNLOCK LOCKED DEVICE ---
+        async function unlockDevice() {
+            // Authenticate using the EXISTING Credential ID
+            // We don't need a password, we need the BIOMETRIC MATCH.
+            try {
+                const publicKey = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    allowCredentials: [{
+                        id: Uint8Array.from(atob(savedCredentialId), c => c.charCodeAt(0)),
+                        type: "public-key"
+                    }],
+                    userVerification: "required",
+                    timeout: 60000
+                };
+
+                const assertion = await navigator.credentials.get({ publicKey });
+
+                // IF SUCCESS: RESTORE SESSION
+                const user = DB.find(u => u.id === boundAgentId);
+                userProfile = user;
+                localStorage.setItem('agent_profile', JSON.stringify(user));
+
+                showPunchView();
+
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Unlock Failed', text: 'Biometric not recognized.', background: '#1e293b', color: 'white' });
             }
         }
 
@@ -521,10 +590,19 @@
         function showSetupView() {
             document.getElementById('setupView').classList.remove('hidden');
             document.getElementById('punchView').classList.add('hidden');
+            document.getElementById('lockedView').classList.add('hidden');
+        }
+
+        function showLockedView() {
+            document.getElementById('setupView').classList.add('hidden');
+            document.getElementById('punchView').classList.add('hidden');
+            document.getElementById('lockedView').classList.remove('hidden');
+            document.getElementById('boundUserDisplay').innerText = boundAgentId;
         }
 
         function showPunchView() {
             document.getElementById('setupView').classList.add('hidden');
+            document.getElementById('lockedView').classList.add('hidden');
             document.getElementById('punchView').classList.remove('hidden');
             document.getElementById('agentName').innerText = `Hello, ${userProfile.name}`;
 
@@ -533,8 +611,12 @@
         }
 
         function logout() {
-            localStorage.removeItem('agent_profile'); // Keep device binding!
-            location.reload();
+            localStorage.removeItem('agent_profile'); // Remove Session
+            location.reload(); // Reload triggers Lock Screen (init logic)
+        }
+
+        function forceLogout() {
+            logout();
         }
 
     </script>
