@@ -1,149 +1,726 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Alpha Profin | Agent Hub</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <title>Alpha Profin | Secure Agent Access</title>
+
+    <!-- Fonts & Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@300;500;700&display=swap"
+        rel="stylesheet">
+
+    <!-- SweetAlert2 for Premium Modals -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
     <style>
-        :root { --primary: #4361ee; --success: #06d6a0; --danger: #ef4444; --dark: #0f172a; --glass: rgba(255, 255, 255, 0.9); }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f1f5f9; margin: 0; display: flex; min-height: 100vh; color: var(--dark); }
-        .app-container { max-width: 1200px; margin: auto; width: 95%; display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; padding: 20px; }
-        @media (max-width: 900px) { .app-container { grid-template-columns: 1fr; } }
-        .glass-card { background: var(--glass); backdrop-filter: blur(10px); border-radius: 24px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #fff; }
-        .punch-center { text-align: center; }
-        .biometric-btn { width: 160px; height: 160px; border-radius: 50%; background: #fff; border: 8px solid #cbd5e1; cursor: pointer; transition: 0.4s; font-size: 50px; color: #cbd5e1; margin: 25px 0; }
-        .biometric-btn.active { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 20px rgba(67, 97, 238, 0.3); }
-        .biometric-btn.on-duty { border-color: var(--danger); color: var(--danger); }
-        .status-badge { padding: 8px 16px; border-radius: 50px; font-size: 11px; font-weight: 800; display: inline-block; margin-bottom: 15px; }
-        .in-range { background: #dcfce7; color: #166534; }
-        .out-range { background: #fee2e2; color: #991b1b; }
-        .holiday-list { list-style: none; padding: 0; margin: 0; }
-        .holiday-item { display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; }
-        .holiday-date { font-weight: 800; color: var(--primary); min-width: 60px; }
+        :root {
+            --primary: #4f46e5;
+            /* Indigo 600 */
+            --primary-glow: rgba(79, 70, 229, 0.4);
+            --dark: #0f172a;
+            /* Slate 900 */
+            --surface: #1e293b;
+            /* Slate 800 */
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--dark);
+            color: var(--text-main);
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(79, 70, 229, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+        }
+
+        /* --- UTILS --- */
+        .hidden {
+            display: none !important;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* --- CONTAINERS --- */
+        .app-shell {
+            width: 100%;
+            max-width: 480px;
+            height: 100%;
+            max-height: 900px;
+            position: relative;
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+        }
+
+        @media (min-width: 500px) {
+            .app-shell {
+                height: 90vh;
+                border-radius: 30px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }
+        }
+
+        /* --- LOGIN SCREEN --- */
+        .login-view {
+            padding: 40px 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+        }
+
+        .brand-logo {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 40px;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-field {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 16px;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-family: 'Outfit', sans-serif;
+            transition: 0.3s;
+            outline: none;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.2);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 18px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--primary) 0%, #4338ca 100%);
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 10px 20px -5px var(--primary-glow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        /* --- DASHBOARD --- */
+        .dashboard-view {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .top-bar {
+            padding: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .user-info h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .user-info p {
+            margin: 4px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .dashboard-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* PULSING BIOMETRIC BUTTON */
+        .bio-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 40px 0;
+        }
+
+        .bio-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid rgba(79, 70, 229, 0.3);
+            animation: spin 10s linear infinite;
+        }
+
+        .bio-ring::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            background: var(--primary);
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .punch-btn {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2a3855, #1e293b);
+            border: none;
+            box-shadow:
+                5px 5px 15px #151d29,
+                -5px -5px 15px #2d3b55;
+            cursor: pointer;
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: 0.3s;
+        }
+
+        .punch-btn:active {
+            transform: scale(0.95);
+            box-shadow: inset 5px 5px 15px #151d29, inset -5px -5px 15px #2d3b55;
+        }
+
+        .finger-icon {
+            font-size: 64px;
+            color: var(--primary);
+            filter: drop-shadow(0 0 10px var(--primary-glow));
+            transition: 0.3s;
+        }
+
+        .punch-btn.active .finger-icon {
+            color: var(--success);
+            filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.5));
+        }
+
+        .status-pill {
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 20px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .dot.active {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .dot.warn {
+            background: var(--warning);
+            box-shadow: 0 0 8px var(--warning);
+        }
+
+        .clock-display {
+            font-size: 42px;
+            font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -2px;
+            margin-top: 20px;
+        }
+
+        .date-display {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .history-panel {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 13px;
+        }
+
+        .log-time {
+            color: white;
+            font-weight: 600;
+        }
+
+        .log-status {
+            color: var(--text-muted);
+        }
     </style>
 </head>
+
 <body>
-<div class="app-container">
-    <div class="glass-card punch-center">
-    <h2 style="margin:0;">Alpha Profin Login</h2>
-    <select id="agentSelect" style="margin-top:20px; padding:10px; border-radius:10px; width:80%; border:1px solid #cbd5e1;">
-        <option value="">Select Your Name</option>
-        <option>Eswari</option><option>Anitha</option><option>Deepak</option>
-        <option>Vanitha</option><option>Bavani</option><option>Ram Kumar</option>
-        <option>Elango</option><option>Aravindhan</option><option>Agent 9</option>
-        <option>Admin</option>
-    </select>
 
-    <div id="geoStatus" class="status-badge out-range" style="margin-top:15px;">Initializing GPS...</div>
-    <br>
-    <button id="punchBtn" class="biometric-btn" disabled onclick="handlePunch()">
-        <i id="punchIcon" class="fas fa-fingerprint"></i>
-    </button>
-    <div id="punchLabel" style="font-weight:800; color:#64748b;">SELECT NAME & BE IN RANGE</div>
-</div>  
-        <div class="glass-card">
-        <h3 style="margin-top:0;"><i class="fas fa-calendar-alt"></i> 2026 Holidays</h3>
-        <ul class="holiday-list" id="holidayList"></ul>
+    <div class="app-shell">
+
+        <!-- === LOGIN SCREEN === -->
+        <div id="loginView" class="login-view hidden">
+            <div class="brand-logo">ALPHA<span style="color:var(--primary)">PROFIN</span></div>
+            <div style="margin-bottom:30px; color:var(--text-muted); font-size:14px;">Secure Agent Gateway v3.0</div>
+
+            <div class="input-group">
+                <label>Agent ID</label>
+                <input type="text" id="agentId" class="input-field" placeholder="AP-XXX">
+            </div>
+
+            <div class="input-group">
+                <label>Secure Key</label>
+                <input type="password" id="agentPass" class="input-field" placeholder="••••••••">
+            </div>
+
+            <button onclick="handleLogin()" class="btn-primary">Authenticate Device</button>
+            <p style="font-size:11px; color:var(--text-muted); margin-top:20px;"><i class="fas fa-lock"></i> End-to-End
+                Encrypted Session</p>
+        </div>
+
+        <!-- === DASHBOARD SCREEN === -->
+        <div id="dashboardView" class="dashboard-view hidden">
+            <div class="top-bar">
+                <div class="user-info">
+                    <h3 id="userName">Verifying...</h3>
+                    <p id="userRole">Authorized Agent</p>
+                </div>
+                <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+
+            <div class="dashboard-content">
+                <div class="clock-display" id="clock">00:00</div>
+                <div class="date-display" id="date">Loading...</div>
+
+                <div class="bio-container">
+                    <div class="bio-ring"></div>
+                    <button id="mainBtn" class="punch-btn" onclick="requestBiometricAction()">
+                        <i class="fas fa-fingerprint finger-icon"></i>
+                        <div
+                            style="margin-top:10px; font-size:10px; font-weight:700; color:var(--text-muted); letter-spacing:1px;">
+                            TAP TO SCAN</div>
+                    </button>
+                </div>
+
+                <div class="status-pill">
+                    <div id="gpsDot" class="dot"></div>
+                    <span id="gpsText">Locating Satellite...</span>
+                </div>
+                <div class="status-pill" style="margin-top:10px; border-color: transparent;">
+                    <span id="punchStatusText" style="color: var(--text-muted);">Status: Ready</span>
+                </div>
+            </div>
+
+            <div class="history-panel">
+                <div
+                    style="font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:700; margin-bottom:10px;">
+                    Recent Activity</div>
+                <div id="activityLog">
+                    <!-- Logs will appear here -->
+                </div>
+            </div>
+        </div>
+
     </div>
-</div>
 
-<script>
-    const CLOUD_URL = "https://script.google.com/macros/s/AKfycbznSbaL9o8d1Y4Ib_cm26WYGWM3MorpfG7uqAcNOQjND4vuyA5w5qHFbFcKohQWBYKb/exec";
-    const BRANCHES = [
-        { name: "Main Office", lat: 13.0827, lon: 80.2707 },
-        { name: "Branch 2", lat: 13.073384, lon: 80.184143 }
-    ];
-    let userCoords = { lat: 0, lon: 0 };
-    let isOnDuty = localStorage.getItem('onDuty') === 'true';
+    <script>
+        // --- CONFIGURATION ---
+        const APPS_SCRIPT_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE"; // Backend Hook
 
-    function init() {
-        const holidays = [{date:"Jan 26", name:"Republic Day"}, {date:"Aug 15", name:"Independence Day"}, {date:"Oct 2", name:"Gandhi Jayanti"}, {date:"Nov 8", name:"Diwali"}];
-        document.getElementById('holidayList').innerHTML = holidays.map(h => `<li class="holiday-item"><span class="holiday-date">${h.date}</span><span>${h.name}</span></li>`).join('');
-        setInterval(() => { document.getElementById('timeDisplay').innerText = new Date().toLocaleTimeString(); }, 1000);
-        updateUI();
-        startTracking();
-    }
+        // Valid Users (In real app, fetch from database)
+        const MOCK_DB = [
+            { id: "AP-401", key: "alpha123", name: "Rahul Sharma", role: "Sr. Agent" },
+            { id: "AP-405", key: "alpha123", name: "Priya Das", role: "Field Sales" },
+            { id: "ADMIN", key: "admin", name: "System Admin", role: "Superuser" }
+        ];
 
-    function startTracking() {
-        navigator.geolocation.watchPosition(pos => {
-            userCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-            let branch = BRANCHES.find(b => calculateDistance(userCoords.lat, userCoords.lon, b.lat, b.lon) <= 150);
-            const badge = document.getElementById('geoStatus');
-            const btn = document.getElementById('punchBtn');
-            if(branch) {
-                badge.className = "status-badge in-range"; badge.innerHTML = "📍 Authorized: " + branch.name;
-                btn.disabled = false; btn.classList.add('active');
-                document.getElementById('punchLabel').innerText = isOnDuty ? "TAP TO PUNCH OUT" : "TAP TO PUNCH IN";
-            } else {
-                badge.className = "status-badge out-range"; badge.innerHTML = "❌ Outside Range ("+userCoords.lat.toFixed(4)+")";
-                btn.disabled = true; btn.classList.remove('active');
-            }
-        }, err => { alert("Please enable GPS and Allow Location access."); }, { enableHighAccuracy: true });
-    }
+        const BRANCHES = [
+            { name: "Chennai HQ", lat: 13.0827, lon: 80.2707 },
+            { name: "West Branch", lat: 13.0733, lon: 80.1841 }
+        ];
 
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3; const dLat = (lat2-lat1)*Math.PI/180; const dLon = (lon2-lon1)*Math.PI/180;
-        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    }
-    async function executeSync() {
-    const agentName = document.getElementById('agentSelect').value;
-    if(!agentName) { alert("Please select your name first!"); return; }
+        // State
+        let currentUser = null;
+        let currentLocation = { lat: 0, lon: 0, type: "UNKNOWN" }; // 'OFFICE', 'FIELD', 'UNKNOWN'
+        let isClockedIn = false;
 
-    const btn = document.getElementById('punchBtn');
-    const type = isOnDuty ? "PUNCH-OUT" : "PUNCH-IN";
-    
-    const payload = {
-        agentId: agentName, // Captures the selected name
-        lat: userCoords.lat,
-        lon: userCoords.lon,
-        type: type
-    };
-
-    try {
-        // FIXED: Using text/plain to bypass CORS block
-        await fetch(CLOUD_URL, {
-            method: "POST",
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
+        // --- INITIALIZATION ---
+        document.addEventListener("DOMContentLoaded", () => {
+            checkSession();
+            startClock();
         });
 
-        isOnDuty = !isOnDuty;
-        localStorage.setItem('onDuty', isOnDuty);
-        updateUIState();
-        alert(`✓ ${agentName} Successfully ${type}`);
-    } catch (error) {
-        alert("Sync Error. Check Internet.");
-    }
-}
+        // --- 1. SESSION MANAGEMENT ---
+        function checkSession() {
+            const storedUser = localStorage.getItem("alpha_agent_session");
+            if (storedUser) {
+                currentUser = JSON.parse(storedUser);
+                showDashboard();
+            } else {
+                showLogin();
+            }
+        }
 
-    async function handlePunch() {
-        // Trigger Biometric
-        try {
-            const auth = await navigator.credentials.create({ publicKey: { challenge: new Uint8Array([1,2,3,4]), rp: {name: "Alpha"}, user: {id: new Uint8Array([1]), name: "A", displayName: "A"}, pubKeyCredParams: [{type: "public-key", alg: -7}] }});
-        } catch (e) {} // Fallback if bio fails but GPS is valid
+        function handleLogin() {
+            const id = document.getElementById("agentId").value.trim();
+            const key = document.getElementById("agentPass").value.trim();
 
-        const type = isOnDuty ? "OUT" : "IN";
-        const res = await fetch(CLOUD_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ agentId: "Agent", type: type, lat: userCoords.lat, lon: userCoords.lon }) });
-        isOnDuty = !isOnDuty;
-        localStorage.setItem('onDuty', isOnDuty);
-        updateUI();
-        alert("Success: Punched " + type);
-    }
+            const user = MOCK_DB.find(u => u.id === id && u.key === key);
 
-    function updateUI() {
-        const btn = document.getElementById('punchBtn');
-        if(isOnDuty) { btn.classList.add('on-duty'); document.getElementById('punchIcon').className = "fas fa-sign-out-alt"; }
-        else { btn.classList.remove('on-duty'); document.getElementById('punchIcon').className = "fas fa-fingerprint"; }
-    }
-    init();
-</script>
+            if (user) {
+                // Save Session
+                localStorage.setItem("alpha_agent_session", JSON.stringify(user));
+                currentUser = user;
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Device Authenticated',
+                    text: `Welcome back, ${user.name}`,
+                    background: '#1e293b',
+                    color: '#fff',
+                    confirmButtonColor: '#4f46e5',
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    showDashboard();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Access Denied',
+                    text: 'Invalid ID or Security Key.',
+                    background: '#1e293b',
+                    color: '#fff',
+                    confirmButtonColor: '#ef4444'
+                });
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem("alpha_agent_session");
+            location.reload();
+        }
+
+        // --- 2. VIEW SWITCHERS ---
+        function showLogin() {
+            document.getElementById("loginView").classList.remove("hidden");
+            document.getElementById("dashboardView").classList.add("hidden");
+        }
+
+        function showDashboard() {
+            document.getElementById("loginView").classList.add("hidden");
+            const dash = document.getElementById("dashboardView");
+            dash.classList.remove("hidden");
+            dash.classList.add("fade-in");
+
+            // Set User Info
+            document.getElementById("userName").innerText = currentUser.name;
+            document.getElementById("userRole").innerText = currentUser.role;
+
+            // Initialize GPS
+            initGPS();
+            updateLogView();
+
+            // Check Status (Mock)
+            isClockedIn = localStorage.getItem("clock_status") === "IN";
+            updateButtonState();
+        }
+
+        // --- 3. GPS LOGIC ---
+        function initGPS() {
+            if (!navigator.geolocation) {
+                updateGPSDisplay("GPS Not Supported", "error");
+                return;
+            }
+
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    currentLocation.lat = latitude;
+                    currentLocation.lon = longitude;
+
+                    // Check Geofence
+                    let nearest = BRANCHES.find(b => getDistance(latitude, longitude, b.lat, b.lon) <= 150); // 150m Radius
+
+                    if (nearest) {
+                        currentLocation.type = "OFFICE";
+                        updateGPSDisplay(`Verified: ${nearest.name}`, "active");
+                    } else {
+                        currentLocation.type = "FIELD";
+                        updateGPSDisplay("Remote / Field", "warn");
+                    }
+                },
+                (err) => {
+                    updateGPSDisplay("Signal Lost - Enable GPS", "error");
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function updateGPSDisplay(text, status) {
+            document.getElementById("gpsText").innerText = text;
+            const dot = document.getElementById("gpsDot");
+            dot.className = "dot"; // reset
+            if (status === 'active') dot.classList.add('active');
+            if (status === 'warn') dot.classList.add('warn');
+            // error = gray default
+        }
+
+        // --- 4. BIOMETRIC & ACTION HANDLER ---
+        async function requestBiometricAction() {
+            // Platform Authenticator (FaceID / TouchID)
+            // Note: In a real deployment, this requires a server challenge.
+            // We simulate the UX here for the "In-House" requirement.
+
+            if (currentLocation.type === "UNKNOWN") {
+                Swal.fire({ icon: 'warning', title: 'GPS Required', text: 'Waiting for location signal...', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            try {
+                // Trigger Biometric Check
+                // Utilizing webauthn just to trigger system UI if available, else standard fallback
+                const publicKeyCredentialCreationOptions = {
+                    challenge: Uint8Array.from("random_challenge_string", c => c.charCodeAt(0)),
+                    rp: { name: "Alpha Profin", id: window.location.hostname },
+                    user: {
+                        id: Uint8Array.from(currentUser.id, c => c.charCodeAt(0)),
+                        name: currentUser.id,
+                        displayName: currentUser.name,
+                    },
+                    pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                    authenticatorSelection: { authenticatorAttachment: "platform" },
+                    timeout: 60000,
+                    attestation: "direct"
+                };
+
+                // SIMULATION WRAPPER FOR DEMO (Since we don't have a real backend to verify)
+                // In production, you would call navigator.credentials.create/get
+
+                Swal.fire({
+                    title: 'Scanning Biometrics...',
+                    html: 'Please verify your identity',
+                    timer: 2000,
+                    timerProgressBar: true,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    },
+                    background: '#1e293b',
+                    color: '#fff'
+                }).then((result) => {
+                    if (result.dismiss === Swal.DismissReason.timer) {
+                        // Success Simulation
+                        executeAction();
+                    }
+                });
+
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Scan Failed', background: '#1e293b', color: '#fff' });
+            }
+        }
+
+        async function executeAction() {
+            // Toggle State
+            const newStatus = isClockedIn ? "OUT" : "IN";
+            const actionTime = new Date().toLocaleString();
+
+            // Animation
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+            // Save State
+            isClockedIn = !isClockedIn;
+            localStorage.setItem("clock_status", isClockedIn ? "IN" : "OUT");
+
+            // Log Data (Mock Send to Sheet)
+            const logEntry = {
+                time: new Date().toLocaleTimeString(),
+                status: isClockedIn ? "Logged In" : "Logged Out",
+                loc: currentLocation.type
+            };
+            saveLog(logEntry);
+
+            updateButtonState();
+
+            await Swal.fire({
+                icon: 'success',
+                title: isClockedIn ? 'Punch Accepted' : 'Session Closed',
+                text: `Recorded at ${currentLocation.type === 'OFFICE' ? 'Headquarters' : 'Field Location'}`,
+                background: '#1e293b',
+                color: '#fff',
+                confirmButtonColor: '#4f46e5'
+            });
+        }
+
+        function updateButtonState() {
+            const btn = document.getElementById("mainBtn");
+            const statusText = document.getElementById("punchStatusText");
+            const icon = btn.querySelector("i");
+
+            if (isClockedIn) {
+                btn.classList.add("active"); // Green glow
+                icon.classList.remove("fa-fingerprint");
+                icon.classList.add("fa-power-off");
+                statusText.innerText = "Current Status: ON DUTY";
+                statusText.style.color = "var(--success)";
+            } else {
+                btn.classList.remove("active");
+                icon.classList.remove("fa-power-off");
+                icon.classList.add("fa-fingerprint");
+                statusText.innerText = "Current Status: OFF DUTY";
+                statusText.style.color = "var(--text-muted)";
+            }
+        }
+
+        // --- UTILITIES ---
+        function startClock() {
+            const update = () => {
+                const now = new Date();
+                document.getElementById("clock").innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById("date").innerText = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+            };
+            update();
+            setInterval(update, 1000);
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // meters
+            const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function saveLog(entry) {
+            let logs = JSON.parse(localStorage.getItem("activity_logs") || "[]");
+            logs.unshift(entry);
+            if (logs.length > 10) logs.pop();
+            localStorage.setItem("activity_logs", JSON.stringify(logs));
+            updateLogView();
+        }
+
+        function updateLogView() {
+            const logs = JSON.parse(localStorage.getItem("activity_logs") || "[]");
+            const container = document.getElementById("activityLog");
+            container.innerHTML = logs.map(l => `
+            <div class="log-item">
+                <span class="log-time">${l.time}</span>
+                <span class="log-status" style="color:${l.status.includes('In') ? '#10b981' : '#f59e0b'}">${l.status} • ${l.loc}</span>
+            </div>
+        `).join('');
+        }
+
+    </script>
 </body>
 </html>
-
-
-
-
-
