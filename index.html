@@ -196,30 +196,49 @@
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <div style="text-align:left;">
                     <h3 id="agentName" style="margin:0;">Loading...</h3>
-                    <div style="font-size:12px; color:var(--success);">● Secure Session Active</div>
+                    <div style="font-size:12px; color:var(--success);">● Verified Agent Session</div>
                 </div>
                 <button onclick="logout()" style="background:none; border:none; color:#64748b; cursor:pointer;">
                     <i class="fas fa-right-from-bracket"></i>
                 </button>
             </div>
 
-            <div class="status-badge">
-                <i class="fas fa-location-dot" id="gpsIcon"></i>
-                <span id="gpsStatus">Acquiring detailed location...</span>
+            <!-- LOCATION & STATUS SENSORS -->
+            <div
+                style="background: rgba(15, 23, 42, 0.5); padding: 15px; border-radius: 12px; margin-bottom: 20px; text-align: left; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                    <span style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current
+                        Location</span>
+                    <span id="locBadge" class="status-badge" style="padding:2px 8px; font-size:10px;">GPS Waiting</span>
+                </div>
+                <div id="branchDisplay" style="font-weight:700; color:var(--text); font-size:15px;">Detecting
+                    Satellite...</div>
+
+                <div
+                    style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between;">
+                    <div>
+                        <div style="font-size:10px; color:#64748b;">LOGIN TIME</div>
+                        <div id="checkInTime" style="font-weight:600;">--:--</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:10px; color:#64748b;">DURATION</div>
+                        <div id="workDuration" style="font-weight:600;">0h 0m</div>
+                    </div>
+                </div>
             </div>
 
-            <button class="punch-btn-large" onclick="performSecurePunch()">
-                <i class="fas fa-fingerprint"></i>
-                <span>Tap to Verify</span>
+            <button id="mainActionBtn" class="punch-btn-large" onclick="performSecurePunch()">
+                <i class="fas fa-fingerprint" id="actionIcon"></i>
+                <span id="actionText">PUNCH IN</span>
             </button>
 
             <p style="font-size:12px; max-width:80%; margin:auto;">
-                By tapping, you invoke the system's <b>Hardware Biometric Scanner</b> to verify your identity.
+                Secure Enclave® Verification Active.<br>Tap to sign with Device Biometrics.
             </p>
 
             <div id="lastPunch"
-                style="margin-top:30px; font-size:13px; color:#64748b; padding-top:20px; border-top:1px solid #334155;">
-                Last Action: None
+                style="margin-top:20px; font-size:12px; color:#64748b; padding-top:15px; border-top:1px solid #334155;">
+                Ready to capture secure attendance
             </div>
         </div>
 
@@ -227,35 +246,103 @@
 
     <script>
         // --- SECURITY UTILS ---
-        // Helper to encode strings to Uint8Array for WebAuthn
         const strToBin = (str) => Uint8Array.from(str, c => c.charCodeAt(0));
         const binToStr = (bin) => String.fromCharCode(...new Uint8Array(bin));
 
+        // --- CONFIGURATION ---
+        const BRANCHES = [
+            { name: "Chennai HQ", lat: 13.0827, lon: 80.2707, radius: 200 }, // 200 meters
+            { name: "West Branch", lat: 13.0733, lon: 80.1841, radius: 200 }
+        ];
+
         // --- STATE ---
         let userProfile = null; // { id, name, role }
-        let savedCredentialId = null; // stored in localStorage after registration
+        let savedCredentialId = null;
+        let currentGeo = { lat: 0, lon: 0, locationName: "Unknown", isBranch: false };
+        let attendanceState = {
+            status: "OUT", // 'IN' or 'OUT'
+            loginTime: null
+        };
 
-        // --- MOCK DB (Ideally this is on your server) ---
+        // --- MOCK DB ---
+        // Role: 'OFFICE' (Strict Location) or 'FIELD' (Anywhere)
         const DB = [
-            { id: "AP-401", pass: "admin123", name: "Rahul Sharma" },
-            { id: "AP-405", pass: "admin123", name: "Priya Das" }
+            { id: "AP-401", pass: "admin123", name: "Rahul Sharma", role: "OFFICE" },
+            { id: "AP-405", pass: "admin123", name: "Priya Das", role: "FIELD" }
         ];
 
         // --- INIT ---
         document.addEventListener("DOMContentLoaded", () => {
             const storedUser = localStorage.getItem('agent_profile');
             const storedCredId = localStorage.getItem('device_cred_id');
+            const storedState = localStorage.getItem('attendance_state');
+
+            if (storedState) attendanceState = JSON.parse(storedState);
 
             if (storedUser && storedCredId) {
-                // RETURNING USER (Device already bound)
                 userProfile = JSON.parse(storedUser);
                 savedCredentialId = storedCredId;
                 showPunchView();
             } else {
-                // NEW DEVICE or FIRST TIME
                 showSetupView();
             }
         });
+
+        // --- GEOLOCATION ENGINE ---
+        function startLocationServices() {
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    currentGeo.lat = latitude;
+                    currentGeo.lon = longitude;
+
+                    // Identify Location
+                    const branch = BRANCHES.find(b => getDistance(latitude, longitude, b.lat, b.lon) <= b.radius);
+
+                    if (branch) {
+                        currentGeo.locationName = branch.name;
+                        currentGeo.isBranch = true;
+                        updateLocationUI("Verified Office", branch.name, "success");
+                    } else {
+                        currentGeo.locationName = "Field / Remote";
+                        currentGeo.isBranch = false;
+
+                        // Visual feedback based on Role
+                        if (userProfile && userProfile.role === 'OFFICE') {
+                            updateLocationUI("Out of Bounds", `Coords: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, "warning");
+                        } else {
+                            updateLocationUI("Field Mode", `Field Visit: ${latitude.toFixed(4).slice(0, 6)}...`, "primary");
+                        }
+                    }
+                },
+                (err) => {
+                    updateLocationUI("GPS Error", "Signal Lost", "error");
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function updateLocationUI(badge, mainText, type) {
+            document.getElementById('locBadge').innerText = badge;
+            document.getElementById('branchDisplay').innerText = mainText;
+
+            let color = "#64748b"; // default
+            if (type === 'success') color = "#10b981";
+            if (type === 'warning') color = "#f59e0b";
+            if (type === 'error') color = "#ef4444";
+            if (type === 'primary') color = "#3b82f6";
+
+            document.getElementById('locBadge').style.color = color;
+            document.getElementById('locBadge').style.borderColor = color;
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // meters
+            const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
 
         // --- FLOW 1: DEVICE BINDING ---
         async function registerDevice() {
@@ -268,8 +355,6 @@
                 return;
             }
 
-            // START WEBAUTHN REGISTRATION
-            // This asks the OS to create a private/public key pair securely.
             Swal.fire({
                 title: 'Setup Biometrics',
                 text: 'Your device will now ask to verify your FaceID/Fingerprint to create a secure passkey.',
@@ -288,25 +373,14 @@
                 const publicKey = {
                     challenge: crypto.getRandomValues(new Uint8Array(32)),
                     rp: { name: "Alpha Profin Attendance" },
-                    user: {
-                        id: strToBin(user.id),
-                        name: user.id,
-                        displayName: user.name
-                    },
+                    user: { id: strToBin(user.id), name: user.id, displayName: user.name },
                     pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-                    authenticatorSelection: {
-                        authenticatorAttachment: "platform", // Forces built-in scanner (TouchID/FaceID)
-                        userVerification: "required" // Forces the "Auth" prompt
-                    },
+                    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
                     timeout: 60000,
                     attestation: "none"
                 };
 
                 const credential = await navigator.credentials.create({ publicKey });
-
-                // SUCCESS - BINDING COMPLETE
-                // Store the Credential ID (In real app, send Public Key to Server)
-                // Here we store locally to simulate "Recognized Device"
                 const credId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
 
                 localStorage.setItem('agent_profile', JSON.stringify(user));
@@ -316,85 +390,132 @@
                 savedCredentialId = credId;
 
                 Swal.fire({
-                    icon: 'success',
-                    title: 'Device Linked!',
-                    text: 'This device is now trusted. You can use biometrics to punch in.',
-                    background: '#1e293b', color: 'white'
+                    icon: 'success', title: 'Device Linked!', text: 'Secure Enclave Bound.', background: '#1e293b', color: 'white'
                 }).then(showPunchView);
 
             } catch (err) {
                 console.error(err);
-                Swal.fire({ icon: 'error', title: 'Setup Cancelled', text: 'Biometric setup failed or was cancelled.', background: '#1e293b', color: 'white' });
+                Swal.fire({ icon: 'error', title: 'Setup Cancelled', text: 'Biometric setup failed.', background: '#1e293b', color: 'white' });
             }
         }
 
-        // --- FLOW 2: SECURE PUNCH ---
+        // --- FLOW 2: SECURE PUNCH LIFECYCLE ---
         async function performSecurePunch() {
-            // 1. GPS CHECK FIRST
-            document.getElementById('gpsStatus').innerText = "Verifying Location Integrity...";
+            // A. VALIDATION CHECKS
+            // 1. GPS Check
+            if (currentGeo.lat === 0) {
+                Swal.fire({ icon: 'warning', title: 'No GPS Signal', text: 'Waiting for accurate location...', background: '#1e293b', color: 'white' });
+                return;
+            }
 
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                // Location Success
-                const { latitude, longitude, accuracy } = pos.coords;
+            const nextState = attendanceState.status === 'IN' ? 'OUT' : 'IN';
 
-                if (accuracy > 100) {
-                    Swal.fire({ icon: 'warning', title: 'Low GPS Accuracy', text: 'Please move to an open area for better signal.', background: '#1e293b', color: 'white' });
-                    return;
-                }
+            // 2. Strict Location Rule (For Office Staff Only)
+            // "End of day agent must logout form the either of the location only"
+            if (nextState === 'OUT' && userProfile.role === 'OFFICE' && !currentGeo.isBranch) {
+                Swal.fire({ icon: 'error', title: 'Invalid Logout Location', text: 'Office Staff must logout from a Branch Location.', background: '#1e293b', color: 'white' });
+                return;
+            }
 
-                document.getElementById('gpsStatus').innerText = `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
+            // B. BIOMETRIC CHALLENGE
+            try {
+                const publicKey = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    allowCredentials: [{
+                        id: Uint8Array.from(atob(savedCredentialId), c => c.charCodeAt(0)),
+                        type: "public-key"
+                    }],
+                    userVerification: "required", // FORCE BIOMETRICS
+                    timeout: 60000
+                };
 
-                // 2. BIOMETRIC CHALLENGE
-                // This calls the OS "Unlock" prompt. 
-                // If they are not the owner, they cannot pass this.
-                try {
-                    const publicKey = {
-                        challenge: crypto.getRandomValues(new Uint8Array(32)),
-                        allowCredentials: [{
-                            id: Uint8Array.from(atob(savedCredentialId), c => c.charCodeAt(0)),
-                            type: "public-key"
-                        }],
-                        userVerification: "required", // CRITICAL: This forces the biometric prompt
-                        timeout: 60000
-                    };
+                const assertion = await navigator.credentials.get({ publicKey });
 
-                    const assertion = await navigator.credentials.get({ publicKey });
+                // C. SUCCESS - PROCESS PUNCH
+                processPunchSuccess(nextState);
 
-                    // 3. IF WE ARE HERE, THEY PASSED BIOMETRICS
-                    // Submit to backend
-                    submitPunch(latitude, longitude);
-
-                } catch (err) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Biometric Failed',
-                        text: 'FaceID/Fingerprint not recognized.',
-                        background: '#1e293b', color: 'white'
-                    });
-                }
-
-            }, (err) => {
-                Swal.fire({ icon: 'error', title: 'GPS Required', text: 'Location access is mandatory.', background: '#1e293b', color: 'white' });
-            }, { enableHighAccuracy: true, timeout: 10000 });
+            } catch (err) {
+                console.log(err);
+                Swal.fire({
+                    icon: 'error', title: 'Biometric Failed', text: 'Identity verification rejected.', background: '#1e293b', color: 'white'
+                });
+            }
         }
 
-        function submitPunch(lat, lon) {
-            // Mock Backend Call
+        function processPunchSuccess(newState) {
             const now = new Date();
-            const timeStr = now.toLocaleTimeString();
 
-            document.getElementById('lastPunch').innerHTML = `Last Action: <span style="color:var(--success)">Verified at ${timeStr}</span>`;
+            if (newState === 'IN') {
+                // -- LOGGING IN --
+                attendanceState.status = 'IN';
+                attendanceState.loginTime = now.getTime();
 
-            Swal.fire({
-                icon: 'success',
-                title: 'Punch Recorded',
-                html: `Identity Verified by <b>Device Enclave</b><br>Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-                background: '#1e293b', color: 'white',
-                timer: 3000
-            });
+                Swal.fire({
+                    icon: 'success', title: `Welcome, ${userProfile.name}`,
+                    text: `Logged in at ${now.toLocaleTimeString()} from ${currentGeo.locationName}`,
+                    background: '#1e293b', color: 'white'
+                });
 
-            // In production: POST to server with lat, lon, agentId, and signed challenge signature
+            } else {
+                // -- LOGGING OUT --
+                attendanceState.status = 'OUT';
+                const durationMs = now.getTime() - attendanceState.loginTime;
+                const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                const mins = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                Swal.fire({
+                    icon: 'success', title: 'Work Day Ended',
+                    html: `Duration: <b>${hours}h ${mins}m</b><br>Logged out from: ${currentGeo.locationName}`,
+                    background: '#1e293b', color: 'white'
+                });
+
+                attendanceState.loginTime = null;
+            }
+
+            // Persist
+            localStorage.setItem('attendance_state', JSON.stringify(attendanceState));
+            updateDashboardUI();
         }
+
+        // --- UI UPDATER ---
+        function updateDashboardUI() {
+            const btn = document.getElementById('mainActionBtn');
+            const icon = document.getElementById('actionIcon');
+            const text = document.getElementById('actionText');
+            const timeDisplay = document.getElementById('checkInTime');
+
+            if (attendanceState.status === 'IN') {
+                // State: WORKING
+                btn.style.borderColor = "#ef4444"; // Red for Stop
+                btn.style.color = "#ef4444";
+                icon.className = "fas fa-power-off";
+                text.innerText = "PUNCH OUT";
+                btn.classList.add("active-duty"); // For styling if needed
+
+                if (attendanceState.loginTime) {
+                    const loginDate = new Date(attendanceState.loginTime);
+                    timeDisplay.innerText = loginDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+            } else {
+                // State: IDLE
+                btn.style.borderColor = "#3b82f6"; // Blue for Start
+                btn.style.color = "#3b82f6";
+                icon.className = "fas fa-fingerprint";
+                text.innerText = "PUNCH IN";
+                timeDisplay.innerText = "--:--";
+                document.getElementById('workDuration').innerText = "0h 0m";
+            }
+        }
+
+        // Timer Loop
+        setInterval(() => {
+            if (attendanceState.status === 'IN' && attendanceState.loginTime) {
+                const diff = new Date().getTime() - attendanceState.loginTime;
+                const h = Math.floor(diff / (1000 * 60 * 60));
+                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                document.getElementById('workDuration').innerText = `${h}h ${m}m`;
+            }
+        }, 1000);
 
         // --- VIEW MANAGERS ---
         function showSetupView() {
@@ -407,21 +528,16 @@
             document.getElementById('punchView').classList.remove('hidden');
             document.getElementById('agentName').innerText = `Hello, ${userProfile.name}`;
 
-            // Start watching GPS passively for UI
-            navigator.geolocation.watchPosition(p => {
-                document.getElementById('gpsStatus').innerText = "GPS Signal Logic: Active";
-                document.getElementById('gpsIcon').style.color = "#10b981";
-            }, e => {
-                document.getElementById('gpsStatus').innerText = "GPS Signal Lost";
-                document.getElementById('gpsIcon').style.color = "#ef4444";
-            });
+            startLocationServices();
+            updateDashboardUI();
         }
 
         function logout() {
-            localStorage.clear();
+            localStorage.removeItem('agent_profile'); // Keep device binding!
             location.reload();
         }
 
     </script>
 </body>
+
 </html>
