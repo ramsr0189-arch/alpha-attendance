@@ -279,15 +279,14 @@
 
         // --- CONFIGURATION ---
         const BRANCHES = [
-            { name: "Profin Solutions - Triplicane", lat: 13.054010, lon: 80.276903, radius: 200 }, // 200 meters
+            { name: "Profin Solutions - Triplicane", lat: 13.0827, lon: 80.2707, radius: 200 }, // 200 meters
             { name: "Alpha Profin - Nerkundram", lat: 13.0733, lon: 80.1841, radius: 200 }
         ];
 
         // --- CLOUD SYNC CONFIG ---
         const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbyS198ZxWNzeRoLkzs2yaOTa5WAw3fQnUHBcLJumc_OaF2GPxD2AiQqSBcXicoHlcE/exec"; // Replace after deployment
-        const GPS_TRACK_INTERVAL = 120000; // 2 minutes for field agents
-        let gpsTrackingTimer = null;
         let syncQueue = [];
+
 
         // --- STATE ---
         let userProfile = null; // { id, name, role }
@@ -646,60 +645,186 @@
             }
         }
 
-        async function syncGPSToCloud(lat, lon, speed, altitude, accuracy) {
-            const payload = {
-                action: 'logGPS',
-                agentId: userProfile.id,
-                latitude: lat,
-                longitude: lon,
-                speed: speed || 0,
-                altitude: altitude || 0,
-                accuracy: accuracy || 0
-            };
+        // ============================================
+        // GPS TRACKING - Enhanced Version with Distance & Speed
+        // ============================================
 
+        const GPS_TRACK_INTERVAL = 120000; // 2 minutes
+        let gpsTrackingActive = false;
+        let gpsIntervalId = null;
+        let lastGPSPosition = null;
+        let totalDistanceToday = 0;
+        let gpsPointsToday = 0;
+
+        /**
+         * Start GPS tracking (called on punch IN)
+         */
+        function startGPSTracking() {
+            if (gpsTrackingActive) {
+                console.log('⚠️ GPS tracking already active');
+                return;
+            }
+
+            console.log('📍 Starting GPS tracking (every 2 minutes)...');
+            gpsTrackingActive = true;
+
+            // Log first point immediately
+            logGPSPoint();
+
+            // Then log every 2 minutes
+            gpsIntervalId = setInterval(() => {
+                logGPSPoint();
+            }, GPS_TRACK_INTERVAL);
+
+            console.log('✅ GPS tracking started');
+        }
+
+        /**
+         * Stop GPS tracking (called on punch OUT)
+         */
+        function stopGPSTracking() {
+            if (!gpsTrackingActive) {
+                return;
+            }
+
+            console.log('📍 Stopping GPS tracking...');
+
+            if (gpsIntervalId) {
+                clearInterval(gpsIntervalId);
+                gpsIntervalId = null;
+            }
+
+            // Log final point
+            logGPSPoint();
+
+            gpsTrackingActive = false;
+            console.log('✅ GPS tracking stopped');
+            console.log(`📊 Total distance today: ${totalDistanceToday.toFixed(2)} km`);
+            console.log(`📊 Total GPS points: ${gpsPointsToday}`);
+        }
+
+        /**
+         * Log a single GPS point with distance & speed calculation
+         */
+        async function logGPSPoint() {
             try {
-                await fetch(CLOUD_API_URL, {
+                const position = await getCurrentPosition();
+
+                const gpsData = {
+                    action: 'logGPS',
+                    agentId: userProfile.id,
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    speed: position.coords.speed || 0,
+                    accuracy: position.coords.accuracy,
+                    altitude: position.coords.altitude || 0,
+                    heading: position.coords.heading || 0,
+                    activity: detectActivity(position.coords.speed)
+                };
+
+                // Calculate distance if we have a previous point
+                if (lastGPSPosition) {
+                    const distance = calculateGPSDistance(
+                        lastGPSPosition.lat,
+                        lastGPSPosition.lng,
+                        position.coords.latitude,
+                        position.coords.longitude
+                    );
+                    totalDistanceToday += distance;
+                }
+
+                lastGPSPosition = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+
+                gpsPointsToday++;
+
+                console.log(`📍 GPS Point ${gpsPointsToday}: [${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}]`);
+                console.log(`⚡ Speed: ${(gpsData.speed * 3.6).toFixed(1)} km/h | 📏 Total Distance: ${totalDistanceToday.toFixed(2)} km`);
+
+                // Send to backend
+                const response = await fetch(CLOUD_API_URL, {
                     method: 'POST',
                     mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(gpsData)
                 });
-            } catch (err) {
-                console.error('GPS sync failed:', err);
+
+                console.log('✅ GPS point logged successfully');
+
+            } catch (error) {
+                console.error('❌ GPS tracking error:', error);
             }
         }
 
-        function startGPSTracking() {
-            if (gpsTrackingTimer) return; // Already running
-
-            gpsTrackingTimer = setInterval(() => {
-                if (currentGeo.lat !== 0) {
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                            syncGPSToCloud(
-                                pos.coords.latitude,
-                                pos.coords.longitude,
-                                pos.coords.speed,
-                                pos.coords.altitude,
-                                pos.coords.accuracy
-                            );
-                        },
-                        null,
-                        { enableHighAccuracy: true }
-                    );
+        /**
+         * Get current GPS position
+         */
+        function getCurrentPosition() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation not supported'));
+                    return;
                 }
-            }, GPS_TRACK_INTERVAL);
 
-            console.log('🛰️ GPS tracking started for field agent');
+                navigator.geolocation.getCurrentPosition(
+                    resolve,
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            });
         }
 
-        function stopGPSTracking() {
-            if (gpsTrackingTimer) {
-                clearInterval(gpsTrackingTimer);
-                gpsTrackingTimer = null;
-                console.log('🛑 GPS tracking stopped');
-            }
+        /**
+         * Calculate distance between two GPS points (Haversine formula)
+         */
+        function calculateGPSDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in km
         }
+
+        function toRad(degrees) {
+            return degrees * (Math.PI / 180);
+        }
+
+        /**
+         * Detect activity based on speed
+         */
+        function detectActivity(speed) {
+            if (!speed || speed <= 0) return 'stationary';
+
+            const kmh = speed * 3.6; // Convert m/s to km/h
+
+            if (kmh < 5) return 'walking';
+            if (kmh < 20) return 'cycling';
+            if (kmh < 60) return 'driving';
+            return 'highway';
+        }
+
+        /**
+         * Reset daily stats
+         */
+        function resetDailyGPSStats() {
+            totalDistanceToday = 0;
+            gpsPointsToday = 0;
+            lastGPSPosition = null;
+            console.log('🔄 Daily GPS stats reset');
+        }
+
 
         // Retry failed syncs on page load
         function retryFailedSyncs() {
@@ -824,12 +949,203 @@
             });
         }
 
+        // ============================================
+        // 📍 LIVE GPS TRACKING MODULE
+        // ============================================
+
+        const GPS_TRACKING_INTERVAL = 120000; // 2 minutes in milliseconds
+        const GPS_API_URL = 'https://script.google.com/macros/s/AKfycbyS198ZxWNzeRoLkzs2yaOTa5WAw3fQnUHBcLJumc_OaF2GPxD2AiQqSBcXicoHlcE/exec';
+
+        let gpsTrackingActive = false;
+        let gpsIntervalId = null;
+        let lastGPSPosition = null;
+        let totalDistanceToday = 0;
+        let gpsPointsToday = 0;
+
+        /**
+         * Start GPS tracking when agent punches IN
+         */
+        function startGPSTracking() {
+            if (gpsTrackingActive) {
+                console.log('⚠️ GPS tracking already active');
+                return;
+            }
+
+            console.log('📍 Starting GPS tracking (every 2 minutes)...');
+            gpsTrackingActive = true;
+
+            // Log first point immediately
+            logGPSPoint();
+
+            // Then log every 2 minutes
+            gpsIntervalId = setInterval(() => {
+                logGPSPoint();
+            }, GPS_TRACKING_INTERVAL);
+
+            console.log('✅ GPS tracking started');
+        }
+
+        /**
+         * Stop GPS tracking when agent punches OUT
+         */
+        function stopGPSTracking() {
+            if (!gpsTrackingActive) {
+                return;
+            }
+
+            console.log('📍 Stopping GPS tracking...');
+
+            if (gpsIntervalId) {
+                clearInterval(gpsIntervalId);
+                gpsIntervalId = null;
+            }
+
+            // Log final point
+            logGPSPoint();
+
+            gpsTrackingActive = false;
+            console.log('✅ GPS tracking stopped');
+            console.log(`📊 Total distance today: ${totalDistanceToday.toFixed(2)} km`);
+            console.log(`📊 Total GPS points: ${gpsPointsToday}`);
+        }
+
+        /**
+         * Log a single GPS point
+         */
+        async function logGPSPoint() {
+            try {
+                const position = await getCurrentPosition();
+
+                const gpsData = {
+                    action: 'logGPS',
+                    agentId: userProfile.id,
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    speed: position.coords.speed || 0,
+                    accuracy: position.coords.accuracy,
+                    altitude: position.coords.altitude || 0,
+                    heading: position.coords.heading || 0,
+                    activity: detectActivity(position.coords.speed)
+                };
+
+                // Calculate distance if we have a previous point
+                if (lastGPSPosition) {
+                    const distance = calculateDistance(
+                        lastGPSPosition.lat,
+                        lastGPSPosition.lng,
+                        position.coords.latitude,
+                        position.coords.longitude
+                    );
+                    totalDistanceToday += distance;
+                }
+
+                lastGPSPosition = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+
+                gpsPointsToday++;
+
+                console.log(`📍 GPS Point ${gpsPointsToday}: [${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}]`);
+                console.log(`⚡ Speed: ${(gpsData.speed * 3.6).toFixed(1)} km/h | 📏 Total Distance: ${totalDistanceToday.toFixed(2)} km`);
+
+                // Send to backend
+                const response = await fetch(GPS_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(gpsData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    console.log('✅ GPS point logged successfully');
+                } else {
+                    console.error('❌ GPS logging failed:', result.error);
+                }
+
+            } catch (error) {
+                console.error('❌ GPS tracking error:', error);
+            }
+        }
+
+        /**
+         * Get current GPS position
+         */
+        function getCurrentPosition() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation not supported'));
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    resolve,
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            });
+        }
+
+        /**
+         * Calculate distance between two GPS points (Haversine formula)
+         */
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in km
+        }
+
+        function toRad(degrees) {
+            return degrees * (Math.PI / 180);
+        }
+
+        /**
+         * Detect activity based on speed
+         */
+        function detectActivity(speed) {
+            if (!speed || speed <= 0) return 'stationary';
+
+            const kmh = speed * 3.6; // Convert m/s to km/h
+
+            if (kmh < 5) return 'walking';
+            if (kmh < 20) return 'cycling';
+            if (kmh < 60) return 'driving';
+            return 'highway';
+        }
+
+        /**
+         * Reset daily stats (call at midnight or on first punch IN of day)
+         */
+        function resetDailyGPSStats() {
+            totalDistanceToday = 0;
+            gpsPointsToday = 0;
+            lastGPSPosition = null;
+            console.log('🔄 Daily GPS stats reset');
+        }
+
+        // ============================================
+        // END GPS TRACKING MODULE
+        // ============================================
+
         function forceLogout() {
             logout();
         }
+
 
     </script>
 </body>
 
 </html>
-
