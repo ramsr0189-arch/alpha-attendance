@@ -275,6 +275,12 @@
             { name: "West Branch", lat: 13.0733, lon: 80.1841, radius: 200 }
         ];
 
+        // --- CLOUD SYNC CONFIG ---
+        const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbyS198ZxWNzeRoLkzs2yaOTa5WAw3fQnUHBcLJumc_OaF2GPxD2AiQqSBcXicoHlcE/exec"; // Replace after deployment
+        const GPS_TRACK_INTERVAL = 120000; // 2 minutes for field agents
+        let gpsTrackingTimer = null;
+        let syncQueue = [];
+
         // --- STATE ---
         let userProfile = null; // { id, name, role }
         let savedCredentialId = null;
@@ -301,6 +307,9 @@
             const storedState = localStorage.getItem('attendance_state');
 
             if (storedState) attendanceState = JSON.parse(storedState);
+
+            // Retry failed cloud syncs
+            retryFailedSyncs();
 
             if (storedBoundId && storedCredId) {
                 // DEVICE IS ALREADY BOUND
@@ -519,6 +528,21 @@
                 attendanceState.status = 'IN';
                 attendanceState.loginTime = now.getTime();
 
+                // SYNC TO CLOUD
+                syncAttendanceToCloud({
+                    punchType: 'IN',
+                    timestamp: now.getTime(),
+                    latitude: currentGeo.lat,
+                    longitude: currentGeo.lon,
+                    locationName: currentGeo.locationName,
+                    isBranch: currentGeo.isBranch
+                });
+
+                // Start GPS tracking for field agents
+                if (userProfile.role === 'FIELD') {
+                    startGPSTracking();
+                }
+
                 Swal.fire({
                     icon: 'success', title: `Welcome, ${userProfile.name}`,
                     text: `Logged in at ${now.toLocaleTimeString()} from ${currentGeo.locationName}`,
@@ -532,6 +556,20 @@
                 const hours = Math.floor(durationMs / (1000 * 60 * 60));
                 const mins = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
 
+                // SYNC TO CLOUD
+                syncAttendanceToCloud({
+                    punchType: 'OUT',
+                    timestamp: now.getTime(),
+                    latitude: currentGeo.lat,
+                    longitude: currentGeo.lon,
+                    locationName: currentGeo.locationName,
+                    isBranch: currentGeo.isBranch,
+                    duration: `${hours}h ${mins}m`
+                });
+
+                // Stop GPS tracking
+                stopGPSTracking();
+
                 Swal.fire({
                     icon: 'success', title: 'Work Day Ended',
                     html: `Duration: <b>${hours}h ${mins}m</b><br>Logged out from: ${currentGeo.locationName}`,
@@ -541,10 +579,124 @@
                 attendanceState.loginTime = null;
             }
 
-            // Persist
+            // Persist locally
             localStorage.setItem('attendance_state', JSON.stringify(attendanceState));
             updateDashboardUI();
         }
+
+        // ============================================
+        // CLOUD SYNC FUNCTIONS
+        // ============================================
+        async function syncAttendanceToCloud(punchData) {
+            const payload = {
+                action: 'logAttendance',
+                agentId: userProfile.id,
+                agentName: userProfile.name,
+                role: userProfile.role,
+                punchType: punchData.punchType,
+                latitude: punchData.latitude,
+                longitude: punchData.longitude,
+                locationName: punchData.locationName,
+                isBranch: punchData.isBranch,
+                deviceId: savedCredentialId.substring(0, 12),
+                biometricMethod: 'WebAuthn',
+                duration: punchData.duration || null
+            };
+
+            try {
+                const response = await fetch(CLOUD_API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                console.log('✅ Attendance synced to cloud');
+            } catch (err) {
+                console.error('❌ Cloud sync failed:', err);
+                // Add to queue for retry
+                syncQueue.push(payload);
+                localStorage.setItem('sync_queue', JSON.stringify(syncQueue));
+            }
+        }
+
+        async function syncGPSToCloud(lat, lon, speed, altitude, accuracy) {
+            const payload = {
+                action: 'logGPS',
+                agentId: userProfile.id,
+                latitude: lat,
+                longitude: lon,
+                speed: speed || 0,
+                altitude: altitude || 0,
+                accuracy: accuracy || 0
+            };
+
+            try {
+                await fetch(CLOUD_API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) {
+                console.error('GPS sync failed:', err);
+            }
+        }
+
+        function startGPSTracking() {
+            if (gpsTrackingTimer) return; // Already running
+
+            gpsTrackingTimer = setInterval(() => {
+                if (currentGeo.lat !== 0) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            syncGPSToCloud(
+                                pos.coords.latitude,
+                                pos.coords.longitude,
+                                pos.coords.speed,
+                                pos.coords.altitude,
+                                pos.coords.accuracy
+                            );
+                        },
+                        null,
+                        { enableHighAccuracy: true }
+                    );
+                }
+            }, GPS_TRACK_INTERVAL);
+
+            console.log('🛰️ GPS tracking started for field agent');
+        }
+
+        function stopGPSTracking() {
+            if (gpsTrackingTimer) {
+                clearInterval(gpsTrackingTimer);
+                gpsTrackingTimer = null;
+                console.log('🛑 GPS tracking stopped');
+            }
+        }
+
+        // Retry failed syncs on page load
+        function retryFailedSyncs() {
+            const queue = localStorage.getItem('sync_queue');
+            if (queue) {
+                syncQueue = JSON.parse(queue);
+                syncQueue.forEach(async (payload) => {
+                    try {
+                        await fetch(CLOUD_API_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    } catch (err) {
+                        console.error('Retry failed:', err);
+                    }
+                });
+                localStorage.removeItem('sync_queue');
+                syncQueue = [];
+            }
+        }
+
 
         // --- UI UPDATER ---
         function updateDashboardUI() {
