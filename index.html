@@ -218,9 +218,17 @@
                     <h3 id="agentName" style="margin:0;">Loading...</h3>
                     <div style="font-size:12px; color:var(--success);">● Verified Agent Session</div>
                 </div>
-                <button onclick="logout()" style="background:none; border:none; color:#64748b; cursor:pointer;">
-                    <i class="fas fa-right-from-bracket"></i>
-                </button>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="unbindDevice()"
+                        style="background:#ef4444; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600;"
+                        title="Unbind this device">
+                        <i class="fas fa-unlink"></i> Unbind
+                    </button>
+                    <button onclick="logout()" style="background:none; border:none; color:#64748b; cursor:pointer;"
+                        title="Logout">
+                        <i class="fas fa-right-from-bracket"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- LOCATION & STATUS SENSORS -->
@@ -295,9 +303,27 @@
         // --- MOCK DB ---
         // Role: 'OFFICE' (Strict Location) or 'FIELD' (Anywhere)
         const DB = [
-            { id: "AP-401", pass: "admin123", name: "Rahul Sharma", role: "OFFICE" },
-            { id: "AP-405", pass: "admin123", name: "Priya Das", role: "FIELD" }
+            { id: "AP-401", pass: "Alpha123", name: "Eswari", role: "OFFICE" },
+            { id: "AP-402", pass: "Alpha123", name: "Anitha", role: "OFFICE" },
+            { id: "AP-403", pass: "Alpha123", name: "Deepak", role: "FIELD" },
+            { id: "AP-404", pass: "Alpha123", name: "Anitha", role: "OFFICE" },
+            { id: "AP-405", pass: "admin123", name: "Priya Das", role: "OFFICE" },
+            { id: "AP-406", pass: "Alpha123", name: "Vanitha", role: "OFFICE" },
+            { id: "AP-407", pass: "Alpha123", name: "Ram Kumar", role: "OFFICE" },
+            { id: "AP-408", pass: "Alpha123", name: "Elango", role: "FIELD" },
+            { id: "AP-409", pass: "Alpha123", name: "Aravindan", role: "FIELD" },
+            { id: "AP-410", pass: "Alpha123", name: "Divya Nair", role: "OFFICE" }
         ];
+
+        // UNBIND DEVICE - Call this in browser console: resetDeviceBinding()
+        function resetDeviceBinding() {
+            if (confirm('⚠️ This will UNBIND this device. You will need to register again. Continue?')) {
+                localStorage.clear();
+                alert('✅ Device unbinded successfully! Reloading...');
+                location.reload();
+            }
+        }
+        // To unbind: Open browser console (F12) and type: resetDeviceBinding()
 
         // --- INIT ---
         document.addEventListener("DOMContentLoaded", () => {
@@ -765,6 +791,37 @@
         function logout() {
             localStorage.removeItem('agent_profile'); // Remove Session
             location.reload(); // Reload triggers Lock Screen (init logic)
+        }
+
+        function unbindDevice() {
+            Swal.fire({
+                title: '⚠️ Unbind Device?',
+                html: 'This will <b>permanently unbind</b> this device from <b>' + userProfile.id + '</b>.<br><br>You will need to register again with biometrics.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Unbind',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#64748b',
+                background: '#1e293b',
+                color: 'white'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Clear everything
+                    localStorage.clear();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Device Unbinded!',
+                        text: 'This device is now free. Reloading...',
+                        background: '#1e293b',
+                        color: 'white',
+                        timer: 1500,
+                        showConfirmButton: false
+                    }).then(() => {
+                        location.reload();
+                    });
+                }
+            });
         }
 
         function forceLogout() {
