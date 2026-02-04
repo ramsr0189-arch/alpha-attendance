@@ -563,10 +563,9 @@
                     isBranch: currentGeo.isBranch
                 });
 
-                // Start GPS tracking for field agents
-                if (userProfile.role === 'FIELD') {
-                    startGPSTracking();
-                }
+                // Start GPS tracking for ALL agents (not just FIELD)
+                startGPSTracking();
+                console.log('🛰️ GPS tracking started for ' + userProfile.name + ' (' + userProfile.role + ')');
 
                 Swal.fire({
                     icon: 'success', title: `Welcome, ${userProfile.name}`,
