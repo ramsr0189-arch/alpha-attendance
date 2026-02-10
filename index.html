@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg: #0f172a;
@@ -323,6 +324,31 @@
             }
         }
         // To unbind: Open browser console (F12) and type: resetDeviceBinding()
+
+        // --- SUPABASE CONFIG (THE FAST LANE) ---
+        // 🚨 REPLACE WITH YOUR SUPABASE KEYS FROM SETUP GUIDE
+        const SUPABASE_URL = "https://cmruecycudczbfmetexs.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcnVlY3ljdWRjemJmbWV0ZXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2ODg0MzcsImV4cCI6MjA4NjI2NDQzN30.46xBA20PBz1yn0AcivIki44NWjYsaWQhsd5mhKYy5TU";
+        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+        async function updateSupabaseHeartbeat(lat, lon, speed) {
+            if (!supabase || !userProfile) return;
+            try {
+                await supabase.from('agent_status').upsert({
+                    agent_id: userProfile.id,
+                    agent_name: userProfile.name,
+                    role: userProfile.role,
+                    latitude: lat,
+                    longitude: lon,
+                    speed: speed,
+                    last_seen: new Date().toISOString(),
+                    is_active: true
+                });
+                console.log('🚀 Live status updated to Supabase');
+            } catch (e) {
+                console.error('Supabase Error:', e);
+            }
+        }
 
         // --- INIT ---
         document.addEventListener("DOMContentLoaded", () => {
@@ -751,6 +777,9 @@
                 });
 
                 console.log('✅ GPS point logged successfully');
+
+                // --- FAST LANE: UPDATE LIVE DB ---
+                updateSupabaseHeartbeat(gpsData.latitude, gpsData.longitude, gpsData.speed);
 
             } catch (error) {
                 console.error('❌ GPS tracking error:', error);
