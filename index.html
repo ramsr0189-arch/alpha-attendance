@@ -601,6 +601,9 @@
                     isBranch: currentGeo.isBranch
                 });
 
+                // 🚨 FORCE LIVE UPDATE (So Admin sees marker instantly)
+                updateSupabaseHeartbeat(currentGeo.lat, currentGeo.lon, 0);
+
                 // Start GPS tracking for ALL agents (not just FIELD)
                 startGPSTracking();
                 console.log('🛰️ GPS tracking started for ' + userProfile.name + ' (' + userProfile.role + ')');
