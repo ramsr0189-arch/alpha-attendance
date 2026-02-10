@@ -329,12 +329,24 @@
         // 🚨 REPLACE WITH YOUR SUPABASE KEYS FROM SETUP GUIDE
         const SUPABASE_URL = "https://cmruecycudczbfmetexs.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcnVlY3ljdWRjemJmbWV0ZXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2ODg0MzcsImV4cCI6MjA4NjI2NDQzN30.46xBA20PBz1yn0AcivIki44NWjYsaWQhsd5mhKYy5TU";
-        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+        // SAFE INIT
+        let supabaseClient = null;
+        try {
+            if (window.supabase) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                console.log('✅ Supabase Client Initialized');
+            } else {
+                console.warn('⚠️ Supabase SDK not found. Live tracking disabled.');
+            }
+        } catch (err) {
+            console.error('❌ Supabase Init Failed:', err);
+        }
 
         async function updateSupabaseHeartbeat(lat, lon, speed) {
-            if (!supabase || !userProfile) return;
+            if (!supabaseClient || !userProfile) return;
             try {
-                await supabase.from('agent_status').upsert({
+                await supabaseClient.from('agent_status').upsert({
                     agent_id: userProfile.id,
                     agent_name: userProfile.name,
                     role: userProfile.role,
